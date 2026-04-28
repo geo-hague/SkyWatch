@@ -369,25 +369,31 @@ const routeCache = new Map();
 
 async function fetchRoute(callsign) {
   const cs = (callsign || '').trim().toUpperCase();
-  if (!cs || cs === '???') return;
+  if (!cs || cs === '???' || cs.length < 3) return;
   if (routeCache.has(cs)) return;
   routeCache.set(cs, 'loading');
 
   try {
-    const url = `https://opensky-network.org/api/routes?callsign=${encodeURIComponent(cs)}`;
-    const res = await fetch(url);
-    if (!res.ok) { routeCache.set(cs, 'none'); return; }
+    // adsbdb.com is CORS-enabled and returns route + airport names in one call
+    const res = await fetch(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`);
+    if (!res.ok) { routeCache.set(cs, 'none'); updateRouteRow(cs); return; }
     const data = await res.json();
-    const route = data.route || [];
-    if (route.length >= 2) {
-      routeCache.set(cs, { origin: route[0], dest: route[route.length - 1] });
+    const fr = data?.response?.flightroute;
+    if (fr && fr.origin?.icao_code && fr.destination?.icao_code) {
+      routeCache.set(cs, {
+        origin: fr.origin.icao_code,
+        originName: fr.origin.name || fr.origin.municipality || '',
+        originCountry: fr.origin.iso_country || '',
+        dest: fr.destination.icao_code,
+        destName: fr.destination.name || fr.destination.municipality || '',
+        destCountry: fr.destination.iso_country || '',
+      });
     } else {
       routeCache.set(cs, 'none');
     }
   } catch {
     routeCache.set(cs, 'none');
   }
-  // Update just this card's route row without full re-render
   updateRouteRow(cs);
 }
 
@@ -401,11 +407,14 @@ function buildRouteHTML(cs) {
   const r = routeCache.get(cs);
   if (!r || r === 'loading') return '<span class="route-loading">looking up route...</span>';
   if (r === 'none') return '<span class="route-none">route unavailable</span>';
-  const oName = airportName(r.origin);
-  const dName = airportName(r.dest);
-  return `<span class="route-apt">${r.origin}</span><span class="route-apt-name" style="margin-left:4px">${oName !== r.origin ? oName : ''}</span>
+  // Use adsbdb name, falling back to local table, falling back to ICAO code
+  const oName = r.originName || airportName(r.origin);
+  const dName = r.destName  || airportName(r.dest);
+  const oLabel = oName !== r.origin ? oName : '';
+  const dLabel = dName !== r.dest   ? dName : '';
+  return `<span class="route-apt">${r.origin}</span>${oLabel ? `<span class="route-apt-name">&thinsp;${oLabel}</span>` : ''}
     <span class="route-arrow">→</span>
-    <span class="route-apt">${r.dest}</span><span class="route-apt-name" style="margin-left:4px">${dName !== r.dest ? dName : ''}</span>`;
+    <span class="route-apt">${r.dest}</span>${dLabel ? `<span class="route-apt-name">&thinsp;${dLabel}</span>` : ''}`;
 }
 
 async function fetchAllRoutes(list) {
@@ -413,11 +422,14 @@ async function fetchAllRoutes(list) {
   const withCallsign = list.filter(a => (a.flight || '').trim().length > 2).slice(0, 10);
   for (const a of withCallsign) {
     const cs = (a.flight || '').trim().toUpperCase();
-    // Check if airplanes.live already gave us route data
-    if ((a.from_iata || a.from_icao) && (a.to_iata || a.to_icao)) {
-      const origin = a.from_icao || ('K' + a.from_iata) || a.from_iata;
-      const dest   = a.to_icao   || ('K' + a.to_iata)   || a.to_iata;
-      routeCache.set(cs, { origin, dest });
+    // Check if airplanes.live already gave us route data (various field names)
+    const fromIcao = a.from_icao || a.depIcao || a.dep || a.origin;
+    const toIcao   = a.to_icao   || a.arrIcao || a.arr || a.destination;
+    if (fromIcao && toIcao) {
+      routeCache.set(cs, {
+        origin: fromIcao, originName: airportName(fromIcao),
+        dest: toIcao,     destName:   airportName(toIcao),
+      });
       updateRouteRow(cs);
     } else if (!routeCache.has(cs)) {
       fetchRoute(cs);
