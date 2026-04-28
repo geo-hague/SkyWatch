@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SkyWatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #080b0f;
+    --bg2: #0f1318;
+    --bg3: #161c24;
+    --amber: #f0a020;
+    --amber-dim: #7a5010;
+    --amber-glow: rgba(240,160,32,0.12);
+    --green: #22dd88;
+    --red: #ff4455;
+    --blue: #44aaff;
+    --text: #ddd8c8;
+    --text-dim: #6b7280;
+    --border: rgba(240,160,32,0.18);
+    --border-dim: rgba(255,255,255,0.06);
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Barlow Condensed', sans-serif; overflow-x: hidden; }
+  body { display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* Header */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .logo { font-family: 'Space Mono', monospace; font-size: 18px; font-weight: 700; letter-spacing: 0.12em; color: var(--amber); }
+  .logo span { opacity: 0.5; font-weight: 400; }
+  .status-pill {
+    font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.08em;
+    padding: 4px 10px; border-radius: 20px;
+    background: var(--amber-glow); border: 1px solid var(--amber-dim); color: var(--amber);
+  }
+  .status-pill.red { background: rgba(255,68,85,0.1); border-color: rgba(255,68,85,0.3); color: var(--red); }
+  .status-pill.green { background: rgba(34,221,136,0.1); border-color: rgba(34,221,136,0.3); color: var(--green); }
+
+  /* Permission / loading screens */
+  #screen-perm, #screen-loading, #screen-error {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 32px 24px; text-align: center; gap: 16px;
+  }
+  .screen-icon { font-size: 48px; opacity: 0.6; }
+  .screen-title { font-size: 22px; font-weight: 600; color: var(--text); letter-spacing: 0.04em; }
+  .screen-sub { font-size: 15px; color: var(--text-dim); line-height: 1.6; max-width: 280px; }
+  .btn-perm {
+    margin-top: 8px; padding: 12px 28px; border-radius: 8px;
+    background: var(--amber); color: #000; font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px; font-weight: 700; letter-spacing: 0.08em;
+    border: none; cursor: pointer; outline: none;
+  }
+  .btn-perm:active { opacity: 0.8; }
+
+  /* Main content */
+  #main { flex: 1; display: none; flex-direction: column; }
+
+  /* Compass + heading bar */
+  #compass-bar {
+    background: var(--bg2); border-bottom: 1px solid var(--border-dim);
+    padding: 10px 16px 12px; display: flex; align-items: center; gap: 12px;
+  }
+  #compass-wrap { position: relative; width: 52px; height: 52px; flex-shrink: 0; }
+  #compass-svg { width: 52px; height: 52px; }
+  .compass-label { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--text-dim); }
+  .heading-info { flex: 1; }
+  .heading-deg { font-family: 'Space Mono', monospace; font-size: 26px; font-weight: 700; color: var(--amber); line-height: 1; }
+  .heading-cardinal { font-size: 14px; color: var(--text-dim); margin-top: 2px; letter-spacing: 0.08em; }
+  .no-compass-msg { font-size: 12px; color: var(--text-dim); font-style: italic; line-height: 1.4; }
+  .tap-hint { font-size: 11px; color: var(--amber-dim); margin-top: 4px; letter-spacing: 0.04em; }
+
+  /* Radar */
+  #radar-wrap {
+    display: flex; justify-content: center; align-items: center;
+    padding: 16px 16px 8px; background: var(--bg);
+  }
+  #radar-svg { width: 220px; height: 220px; }
+
+  /* Stats bar */
+  #stats-bar {
+    display: flex; gap: 0; border-top: 1px solid var(--border-dim); border-bottom: 1px solid var(--border-dim);
+    background: var(--bg2); margin-bottom: 0;
+  }
+  .stat-item { flex: 1; padding: 10px 8px; text-align: center; border-right: 1px solid var(--border-dim); }
+  .stat-item:last-child { border-right: none; }
+  .stat-val { font-family: 'Space Mono', monospace; font-size: 18px; font-weight: 700; color: var(--amber); }
+  .stat-lbl { font-size: 11px; color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; }
+
+  /* Aircraft list */
+  #aircraft-list { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .aircraft-card {
+    background: var(--bg2); border: 1px solid var(--border-dim); border-radius: 10px;
+    padding: 12px 14px; position: relative; overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .aircraft-card.ahead { border-left: 3px solid var(--green); }
+  .aircraft-card.left  { border-left: 3px solid var(--blue); }
+  .aircraft-card.right { border-left: 3px solid var(--amber); }
+  .aircraft-card.behind{ border-left: 3px solid rgba(255,255,255,0.2); }
+
+  .card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .dir-badge {
+    font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.1em; padding: 3px 8px; border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .dir-badge.ahead  { background: rgba(34,221,136,0.15); color: var(--green); border: 1px solid rgba(34,221,136,0.3); }
+  .dir-badge.left   { background: rgba(68,170,255,0.12); color: var(--blue); border: 1px solid rgba(68,170,255,0.3); }
+  .dir-badge.right  { background: rgba(240,160,32,0.12); color: var(--amber); border: 1px solid rgba(240,160,32,0.3); }
+  .dir-badge.behind { background: rgba(255,255,255,0.06); color: var(--text-dim); border: 1px solid rgba(255,255,255,0.1); }
+
+  .callsign { font-family: 'Space Mono', monospace; font-size: 17px; font-weight: 700; color: var(--text); letter-spacing: 0.06em; }
+  .airline { font-size: 13px; color: var(--text-dim); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .distance { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--amber); flex-shrink: 0; }
+
+  .card-divider { height: 1px; background: var(--border-dim); margin-bottom: 10px; }
+
+  .card-data { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .data-cell { text-align: center; }
+  .data-val { font-family: 'Space Mono', monospace; font-size: 15px; font-weight: 700; color: var(--text); }
+  .data-lbl { font-size: 10px; color: var(--text-dim); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px; }
+
+  .card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-dim); }
+  .aircraft-type { font-size: 12px; color: var(--text-dim); }
+  .registration { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--text-dim); opacity: 0.7; }
+  .on-ground-tag { font-size: 10px; letter-spacing: 0.06em; color: var(--amber); background: var(--amber-glow); padding: 2px 8px; border-radius: 3px; }
+
+  /* Sweep animation on radar */
+  @keyframes sweep {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  .radar-sweep { transform-origin: 110px 110px; animation: sweep 4s linear infinite; }
+
+  /* Blip pulse */
+  @keyframes blip { 0%,100% { opacity: 1; r: 4; } 50% { opacity: 0.5; r: 6; } }
+
+  /* Spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 3px solid var(--border); border-top-color: var(--amber);
+    animation: spin 0.9s linear infinite;
+  }
+
+  #refresh-bar {
+    text-align: center; padding: 8px; font-size: 11px; color: var(--text-dim);
+    font-family: 'Space Mono', monospace; letter-spacing: 0.06em;
+    border-top: 1px solid var(--border-dim); background: var(--bg2);
+  }
+  .empty-msg { text-align: center; padding: 40px 20px; color: var(--text-dim); font-size: 15px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">SKY<span>WATCH</span></div>
+  <div class="status-pill red" id="status-pill">OFFLINE</div>
+</header>
+
+<!-- Permission screen -->
+<div id="screen-perm">
+  <div class="screen-icon">✈</div>
+  <div class="screen-title">Enable Location</div>
+  <div class="screen-sub">SkyWatch needs your location to find nearby aircraft and your device orientation to show directions.</div>
+  <button class="btn-perm" id="btn-start">GRANT ACCESS</button>
+</div>
+
+<!-- Loading screen -->
+<div id="screen-loading" style="display:none">
+  <div class="spinner"></div>
+  <div class="screen-sub">Scanning skies...</div>
+</div>
+
+<!-- Error screen -->
+<div id="screen-error" style="display:none">
+  <div class="screen-icon">⚠</div>
+  <div class="screen-title">Connection Error</div>
+  <div class="screen-sub" id="error-msg">Could not fetch aircraft data.</div>
+  <button class="btn-perm" id="btn-retry">RETRY</button>
+</div>
+
+<!-- Main UI -->
+<div id="main">
+
+  <!-- Compass bar -->
+  <div id="compass-bar">
+    <div id="compass-wrap">
+      <svg id="compass-svg" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="26" cy="26" r="24" stroke="rgba(240,160,32,0.2)" stroke-width="1.5"/>
+        <circle cx="26" cy="26" r="3" fill="rgba(240,160,32,0.4)"/>
+        <text x="26" y="7" text-anchor="middle" fill="#f0a020" font-size="8" font-family="Space Mono" font-weight="700">N</text>
+        <text x="46" y="29" text-anchor="middle" fill="#6b7280" font-size="7" font-family="Space Mono">E</text>
+        <text x="26" y="49" text-anchor="middle" fill="#6b7280" font-size="7" font-family="Space Mono">S</text>
+        <text x="6"  y="29" text-anchor="middle" fill="#6b7280" font-size="7" font-family="Space Mono">W</text>
+        <!-- Needle group, rotated by JS -->
+        <g id="compass-needle" style="transform-origin:26px 26px">
+          <polygon points="26,8 24,26 26,22 28,26" fill="#f0a020" opacity="0.95"/>
+          <polygon points="26,44 24,26 26,30 28,26" fill="#4b5563" opacity="0.7"/>
+        </g>
+      </svg>
+    </div>
+    <div class="heading-info" id="heading-info">
+      <div id="no-compass" style="display:block">
+        <div class="no-compass-msg">Tap to enable compass</div>
+        <div class="tap-hint">Required for directional info</div>
+      </div>
+      <div id="yes-compass" style="display:none">
+        <div class="heading-deg"><span id="heading-val">---</span>°</div>
+        <div class="heading-cardinal" id="heading-card">--</div>
+      </div>
+    </div>
+    <button id="btn-compass" style="background:rgba(240,160,32,0.1);border:1px solid rgba(240,160,32,0.3);color:#f0a020;padding:8px 14px;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:0.06em;cursor:pointer;outline:none;">COMPASS</button>
+  </div>
+
+  <!-- Radar -->
+  <div id="radar-wrap">
+    <svg id="radar-svg" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
+      <!-- Range rings -->
+      <circle cx="110" cy="110" r="36"  fill="none" stroke="rgba(240,160,32,0.08)" stroke-width="1"/>
+      <circle cx="110" cy="110" r="72"  fill="none" stroke="rgba(240,160,32,0.08)" stroke-width="1"/>
+      <circle cx="110" cy="110" r="108" fill="none" stroke="rgba(240,160,32,0.08)" stroke-width="1"/>
+      <!-- Cross hairs -->
+      <line x1="110" y1="2"   x2="110" y2="218" stroke="rgba(240,160,32,0.06)" stroke-width="0.5"/>
+      <line x1="2"   y1="110" x2="218" y2="110" stroke="rgba(240,160,32,0.06)" stroke-width="0.5"/>
+      <!-- Range labels -->
+      <text x="113" y="75"  fill="rgba(240,160,32,0.35)" font-size="7" font-family="Space Mono">2nm</text>
+      <text x="113" y="39"  fill="rgba(240,160,32,0.35)" font-size="7" font-family="Space Mono">4nm</text>
+      <!-- Sweep -->
+      <g class="radar-sweep">
+        <path d="M110,110 L110,2 A108,108 0 0,1 208,70 Z" fill="rgba(240,160,32,0.04)"/>
+      </g>
+      <!-- Cardinal labels -->
+      <text x="110" y="13"  text-anchor="middle" fill="rgba(240,160,32,0.5)" font-size="9" font-family="Space Mono" font-weight="700">N</text>
+      <text x="207" y="114" text-anchor="middle" fill="rgba(240,160,32,0.3)" font-size="8" font-family="Space Mono">E</text>
+      <text x="110" y="216" text-anchor="middle" fill="rgba(240,160,32,0.3)" font-size="8" font-family="Space Mono">S</text>
+      <text x="13"  y="114" text-anchor="middle" fill="rgba(240,160,32,0.3)" font-size="8" font-family="Space Mono">W</text>
+      <!-- User position -->
+      <circle cx="110" cy="110" r="5" fill="#f0a020" opacity="0.9"/>
+      <circle cx="110" cy="110" r="10" fill="none" stroke="#f0a020" stroke-width="1" opacity="0.4"/>
+      <!-- Aircraft blips injected here by JS -->
+      <g id="radar-blips"></g>
+      <!-- Heading arrow (injected by JS) -->
+      <g id="heading-arrow"></g>
+    </svg>
+  </div>
+
+  <!-- Stats -->
+  <div id="stats-bar">
+    <div class="stat-item"><div class="stat-val" id="s-count">0</div><div class="stat-lbl">Aircraft</div></div>
+    <div class="stat-item"><div class="stat-val" id="s-ahead">0</div><div class="stat-lbl">Ahead</div></div>
+    <div class="stat-item"><div class="stat-val" id="s-range">—</div><div class="stat-lbl">Closest</div></div>
+    <div class="stat-item"><div class="stat-val" id="s-alt">—</div><div class="stat-lbl">Max Alt</div></div>
+  </div>
+
+  <!-- Aircraft cards -->
+  <div id="aircraft-list"></div>
+
+  <!-- Refresh bar -->
+  <div id="refresh-bar">NEXT SCAN IN <span id="countdown">15</span>s</div>
+</div>
+
+<script>
+const RADIUS_NM = 10;
+const REFRESH_INTERVAL = 15;
+
+const AIRLINES = {
+  AAL:'American Airlines',UAL:'United Airlines',DAL:'Delta Air Lines',
+  SWA:'Southwest Airlines',SKW:'SkyWest Airlines',ASA:'Alaska Airlines',
+  JBU:'JetBlue Airways',FFT:'Frontier Airlines',NKS:'Spirit Airlines',
+  HAL:'Hawaiian Airlines',SXJ:'Sun Country',EJA:'NetJets',
+  FDX:'FedEx Express',UPS:'UPS Airlines',BAW:'British Airways',
+  DLH:'Lufthansa',AFR:'Air France',KLM:'KLM Royal Dutch',
+  UAE:'Emirates',QTR:'Qatar Airways',ETH:'Ethiopian Airlines',
+  CPA:'Cathay Pacific',ANA:'All Nippon Airways',JAL:'Japan Airlines',
+  KAL:'Korean Air',AAR:'Asiana Airlines',SIA:'Singapore Airlines',
+  QFA:'Qantas',ACA:'Air Canada',WJA:'WestJet',IBE:'Iberia',
+  RYR:'Ryanair',EZY:'easyJet',VLG:'Vueling',WZZ:'Wizz Air',
+  TAP:'TAP Air Portugal',AMX:'Aeromexico',AVA:'Avianca',
+  GLO:'Gol Airlines',LAM:'LATAM Airlines',VOZ:'Virgin Australia',
+  THA:'Thai Airways',MAS:'Malaysia Airlines',GIA:'Garuda Indonesia',
+  PAL:'Philippine Airlines',AIH:'Air India',IST:'Turkish Airlines',
+  SVR:'Aeroflot',CHH:'Hainan Airlines',CCA:'Air China',CSN:'China Southern',
+  CES:'China Eastern',EVA:'EVA Air',TTW:'T\'way Air',
+  CAL:'China Airlines',MXY:'Breeze Airways',SNC:'Sun Air',
+  RPA:'Republic Airways',ENY:'Envoy Air',PDT:'Piedmont Airlines',
+  OPT:'PSA Airlines',BTA:'Air Baltic',NOZ:'Norwegian',
+};
+
+const AIRCRAFT_TYPES = {
+  B737:'Boeing 737',B738:'Boeing 737-800',B739:'Boeing 737-900',
+  B73H:'Boeing 737-800',B752:'Boeing 757-200',B763:'Boeing 767-300',
+  B764:'Boeing 767-400',B772:'Boeing 777-200',B773:'Boeing 777-300',
+  B788:'Boeing 787-8',B789:'Boeing 787-9',B78X:'Boeing 787-10',
+  B748:'Boeing 747-800',B744:'Boeing 747-400',
+  A319:'Airbus A319',A320:'Airbus A320',A321:'Airbus A321',
+  A20N:'Airbus A320neo',A21N:'Airbus A321neo',
+  A332:'Airbus A330-200',A333:'Airbus A330-300',
+  A343:'Airbus A340-300',A345:'Airbus A340-500',
+  A359:'Airbus A350-900',A35K:'Airbus A350-1000',
+  A388:'Airbus A380-800',
+  E170:'Embraer E170',E175:'Embraer E175',E190:'Embraer E190',E195:'Embraer E195',
+  CRJ2:'Canadair CRJ-200',CRJ7:'Canadair CRJ-700',CRJ9:'Canadair CRJ-900',
+  C172:'Cessna 172',C208:'Cessna Caravan',PC12:'Pilatus PC-12',
+  DH8D:'Dash 8-400',AT76:'ATR 72',
+  F100:'Fokker 100',MD11:'McDonnell Douglas MD-11',
+  B350:'Beechcraft King Air 350',GLF6:'Gulfstream G650',C25B:'Citation CJ3',
+};
+
+let userLat = null, userLon = null;
+let compassHeading = null;
+let compassGranted = false;
+let aircraft = [];
+let countdownVal = REFRESH_INTERVAL;
+let countdownTimer = null;
+let refreshTimer = null;
+
+// --- Utility ---
+function toRad(d) { return d * Math.PI / 180; }
+function toDeg(r) { return r * 180 / Math.PI; }
+
+function getBearing(lat1, lon1, lat2, lon2) {
+  const φ1 = toRad(lat1), φ2 = toRad(lat2);
+  const Δλ = toRad(lon2 - lon1);
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function getDistanceNM(lat1, lon1, lat2, lon2) {
+  const R = 3440.065;
+  const φ1 = toRad(lat1), φ2 = toRad(lat2);
+  const Δφ = toRad(lat2 - lat1);
+  const Δλ = toRad(lon2 - lon1);
+  const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function getRelativeDir(bearing) {
+  if (compassHeading === null) return 'bearing';
+  const rel = (bearing - compassHeading + 360) % 360;
+  if (rel < 45 || rel >= 315) return 'ahead';
+  if (rel >= 45 && rel < 135) return 'right';
+  if (rel >= 135 && rel < 225) return 'behind';
+  return 'left';
+}
+
+function getDirLabel(dir) {
+  const labels = { ahead:'AHEAD', right:'RIGHT', left:'LEFT', behind:'BEHIND', bearing:'N/A' };
+  return labels[dir] || 'N/A';
+}
+
+function toCardinal(deg) {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+
+function formatAlt(ft) {
+  if (ft === null || ft === undefined || isNaN(ft)) return '---';
+  return Math.round(ft).toLocaleString() + ' ft';
+}
+function formatSpeed(kts) {
+  if (kts === null || kts === undefined || isNaN(kts)) return '---';
+  return Math.round(kts) + ' kt';
+}
+function formatHeading(deg) {
+  if (deg === null || deg === undefined || isNaN(deg)) return '---';
+  return Math.round(deg) + '°';
+}
+
+function getAirline(callsign) {
+  if (!callsign || callsign.trim() === '') return 'Unknown';
+  const icao = callsign.trim().substring(0, 3).toUpperCase();
+  return AIRLINES[icao] || callsign.trim();
+}
+
+function getAircraftName(t) {
+  if (!t) return '';
+  return AIRCRAFT_TYPES[t.toUpperCase()] || t.toUpperCase();
+}
+
+// --- Compass ---
+function requestCompass() {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission().then(state => {
+      if (state === 'granted') {
+        window.addEventListener('deviceorientation', onOrientation, true);
+        compassGranted = true;
+      }
+    }).catch(() => {});
+  } else {
+    window.addEventListener('deviceorientationabsolute', onAbsOrientation, true);
+    window.addEventListener('deviceorientation', onOrientation, true);
+    compassGranted = true;
+  }
+}
+
+function onAbsOrientation(e) {
+  if (e.absolute && e.alpha !== null) {
+    compassHeading = (360 - e.alpha) % 360;
+    updateCompassUI();
+  }
+}
+
+function onOrientation(e) {
+  if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+    compassHeading = e.webkitCompassHeading;
+    updateCompassUI();
+  } else if (e.absolute && e.alpha !== null) {
+    compassHeading = (360 - e.alpha) % 360;
+    updateCompassUI();
+  }
+}
+
+function updateCompassUI() {
+  if (compassHeading === null) return;
+  document.getElementById('no-compass').style.display = 'none';
+  document.getElementById('yes-compass').style.display = 'block';
+  document.getElementById('heading-val').textContent = Math.round(compassHeading);
+  document.getElementById('heading-card').textContent = toCardinal(compassHeading);
+  // Rotate needle — needle points to N, so rotate by -heading
+  document.getElementById('compass-needle').style.transform = `rotate(${-compassHeading}deg)`;
+  // Update heading arrow on radar
+  renderHeadingArrow();
+}
+
+function renderHeadingArrow() {
+  const g = document.getElementById('heading-arrow');
+  if (!g) return;
+  if (compassHeading === null) { g.innerHTML = ''; return; }
+  const ang = toRad(compassHeading);
+  const cx = 110, cy = 110, len = 85;
+  const ex = cx + Math.sin(ang) * len;
+  const ey = cy - Math.cos(ang) * len;
+  g.innerHTML = `<line x1="${cx}" y1="${cy}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="rgba(240,160,32,0.5)" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <text x="${ex.toFixed(1)}" y="${(ey-4).toFixed(1)}" text-anchor="middle" fill="rgba(240,160,32,0.6)" font-size="8" font-family="Space Mono">YOU</text>`;
+}
+
+// --- Fetch aircraft ---
+async function fetchAircraft() {
+  if (userLat === null) return;
+  setStatus('scanning');
+  try {
+    const url = `https://api.airplanes.live/v2/point/${userLat.toFixed(4)}/${userLon.toFixed(4)}/${RADIUS_NM}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    aircraft = (data.ac || []).filter(a => a.lat && a.lon);
+    renderAll();
+    setStatus('live');
+    startCountdown();
+  } catch (err) {
+    console.error(err);
+    if (aircraft.length === 0) showError('Could not connect to ADS-B feed. Check your connection and try again.');
+    else setStatus('stale');
+    startCountdown();
+  }
+}
+
+function startCountdown() {
+  clearInterval(countdownTimer);
+  clearTimeout(refreshTimer);
+  countdownVal = REFRESH_INTERVAL;
+  document.getElementById('countdown').textContent = countdownVal;
+  countdownTimer = setInterval(() => {
+    countdownVal--;
+    document.getElementById('countdown').textContent = Math.max(0, countdownVal);
+    if (countdownVal <= 0) { clearInterval(countdownTimer); fetchAircraft(); }
+  }, 1000);
+}
+
+function setStatus(state) {
+  const pill = document.getElementById('status-pill');
+  if (state === 'live')     { pill.className = 'status-pill green'; pill.textContent = 'LIVE'; }
+  else if (state === 'scanning') { pill.className = 'status-pill'; pill.textContent = 'SCANNING'; }
+  else if (state === 'stale')    { pill.className = 'status-pill'; pill.textContent = 'STALE'; }
+  else                      { pill.className = 'status-pill red'; pill.textContent = 'OFFLINE'; }
+}
+
+// --- Render ---
+function renderAll() {
+  const enriched = aircraft.map(a => {
+    const bearing = getBearing(userLat, userLon, a.lat, a.lon);
+    const distNM = getDistanceNM(userLat, userLon, a.lat, a.lon);
+    const dir = getRelativeDir(bearing);
+    return { ...a, bearing, distNM, dir };
+  }).sort((a, b) => a.distNM - b.distNM);
+
+  renderStats(enriched);
+  renderRadar(enriched);
+  renderCards(enriched);
+}
+
+function renderStats(list) {
+  document.getElementById('s-count').textContent = list.length;
+  const ahead = compassHeading !== null ? list.filter(a => a.dir === 'ahead').length : '—';
+  document.getElementById('s-ahead').textContent = ahead;
+  const closest = list.length ? list[0].distNM.toFixed(1) + 'nm' : '—';
+  document.getElementById('s-range').textContent = closest;
+  const alts = list.map(a => a.alt_baro || a.alt_geom).filter(v => v && !isNaN(v));
+  const maxAlt = alts.length ? (Math.max(...alts) / 1000).toFixed(0) + 'k' : '—';
+  document.getElementById('s-alt').textContent = maxAlt;
+}
+
+const DIR_COLORS = { ahead:'#22dd88', right:'#f0a020', left:'#44aaff', behind:'rgba(255,255,255,0.3)', bearing:'#f0a020' };
+
+function renderRadar(list) {
+  const blipsEl = document.getElementById('radar-blips');
+  const maxR = RADIUS_NM;
+  const cx = 110, cy = 110, pxR = 108;
+  let html = '';
+  list.slice(0, 20).forEach(a => {
+    const ang = toRad(a.bearing);
+    const r = Math.min(a.distNM / maxR, 1) * pxR;
+    const x = (cx + Math.sin(ang) * r).toFixed(1);
+    const y = (cy - Math.cos(ang) * r).toFixed(1);
+    const col = DIR_COLORS[a.dir] || '#f0a020';
+    const cs = (a.flight || '').trim() || (a.r || '').trim() || '???';
+    html += `<circle cx="${x}" cy="${y}" r="4" fill="${col}" opacity="0.9"/>
+      <text x="${x}" y="${(parseFloat(y)-7).toFixed(1)}" text-anchor="middle" fill="${col}" font-size="7" font-family="Space Mono" opacity="0.85">${cs}</text>`;
+  });
+  blipsEl.innerHTML = html;
+  renderHeadingArrow();
+}
+
+function renderCards(list) {
+  const el = document.getElementById('aircraft-list');
+  if (list.length === 0) {
+    el.innerHTML = '<div class="empty-msg">No aircraft detected within ' + RADIUS_NM + ' nm.<br><br>The sky looks clear above you.</div>';
+    return;
+  }
+  el.innerHTML = list.map(a => {
+    const cs = (a.flight || '').trim() || '???';
+    const airline = getAirline(a.flight || '');
+    const typeStr = getAircraftName(a.t || '');
+    const reg = (a.r || '').trim();
+    const alt = a.alt_baro || a.alt_geom;
+    const spd = a.gs;
+    const trk = a.track;
+    const dir = a.dir;
+    const onGround = a.alt_baro === 'ground' || (alt && alt < 100 && Math.abs(spd || 0) < 30) || a.on_ground === true;
+
+    return `<div class="aircraft-card ${dir}">
+      <div class="card-top">
+        <span class="dir-badge ${dir}">${getDirLabel(dir)}</span>
+        <span class="callsign">${cs}</span>
+        <span style="flex:1"></span>
+        <span class="distance">${a.distNM.toFixed(1)} nm</span>
+      </div>
+      <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;">${airline !== cs ? airline : ''}</div>
+      <div class="card-divider"></div>
+      <div class="card-data">
+        <div class="data-cell">
+          <div class="data-val">${onGround ? 'GND' : (alt ? (Math.round(alt/100)*100).toLocaleString() : '---')}</div>
+          <div class="data-lbl">ALT (ft)</div>
+        </div>
+        <div class="data-cell">
+          <div class="data-val">${formatSpeed(spd)}</div>
+          <div class="data-lbl">SPEED</div>
+        </div>
+        <div class="data-cell">
+          <div class="data-val">${formatHeading(trk)}</div>
+          <div class="data-lbl">HEADING</div>
+        </div>
+      </div>
+      <div class="card-footer">
+        <span class="aircraft-type">${typeStr || 'Unknown type'}</span>
+        ${reg ? `<span class="registration">${reg}</span>` : ''}
+        ${onGround ? '<span class="on-ground-tag">ON GROUND</span>' : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// --- Geolocation ---
+function showMain() {
+  document.getElementById('screen-loading').style.display = 'none';
+  document.getElementById('main').style.display = 'flex';
+}
+function showError(msg) {
+  document.getElementById('screen-loading').style.display = 'none';
+  document.getElementById('main').style.display = 'none';
+  document.getElementById('error-msg').textContent = msg;
+  document.getElementById('screen-error').style.display = 'flex';
+}
+
+function startApp() {
+  document.getElementById('screen-perm').style.display = 'none';
+  document.getElementById('screen-loading').style.display = 'flex';
+  navigator.geolocation.getCurrentPosition(pos => {
+    userLat = pos.coords.latitude;
+    userLon = pos.coords.longitude;
+    showMain();
+    fetchAircraft();
+    // Watch for position updates
+    navigator.geolocation.watchPosition(p => {
+      userLat = p.coords.latitude;
+      userLon = p.coords.longitude;
+    }, null, { enableHighAccuracy: true });
+  }, err => {
+    showError('Location access denied. SkyWatch needs GPS to find nearby aircraft.');
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
+document.getElementById('btn-start').addEventListener('click', startApp);
+document.getElementById('btn-retry').addEventListener('click', () => {
+  document.getElementById('screen-error').style.display = 'none';
+  if (userLat !== null) fetchAircraft();
+  else startApp();
+});
+document.getElementById('btn-compass').addEventListener('click', requestCompass);
+
+// Auto-start if geo was already granted (no prompt needed on revisit)
+if (navigator.permissions) {
+  navigator.permissions.query({ name: 'geolocation' }).then(result => {
+    if (result.state === 'granted') startApp();
+  }).catch(() => {});
+}
+</script>
+</body>
+</html>
