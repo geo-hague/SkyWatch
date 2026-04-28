@@ -157,6 +157,18 @@
     border-top: 1px solid var(--border-dim); background: var(--bg2);
   }
   .empty-msg { text-align: center; padding: 40px 20px; color: var(--text-dim); font-size: 15px; }
+
+  .route-row {
+    display: flex; align-items: center; gap: 6px;
+    margin: 8px 0 0; padding: 7px 10px; border-radius: 6px;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border-dim);
+    font-family: 'Space Mono', monospace; font-size: 11px;
+  }
+  .route-apt { color: var(--text); font-weight: 700; letter-spacing: 0.06em; }
+  .route-apt-name { color: var(--text-dim); font-family: 'Barlow Condensed', sans-serif; font-size: 12px; font-weight: 400; }
+  .route-arrow { color: var(--amber); opacity: 0.6; flex-shrink: 0; }
+  .route-loading { color: var(--text-dim); font-size: 11px; font-style: italic; font-family: 'Barlow Condensed', sans-serif; }
+  .route-none { color: var(--text-dim); font-size: 11px; font-family: 'Barlow Condensed', sans-serif; opacity: 0.6; }
 </style>
 </head>
 <body>
@@ -314,6 +326,107 @@ const AIRCRAFT_TYPES = {
   F100:'Fokker 100',MD11:'McDonnell Douglas MD-11',
   B350:'Beechcraft King Air 350',GLF6:'Gulfstream G650',C25B:'Citation CJ3',
 };
+
+// ICAO -> airport name (major airports)
+const AIRPORTS = {
+  KATL:'Atlanta',KLAX:'Los Angeles',KORD:'Chicago O\'Hare',KDFW:'Dallas/Fort Worth',
+  KDEN:'Denver',KJFK:'New York JFK',KSFO:'San Francisco',KSEA:'Seattle',
+  KLAS:'Las Vegas',KMCO:'Orlando',KEWR:'Newark',KBOS:'Boston',
+  KPHX:'Phoenix',KMIA:'Miami',KIAH:'Houston Intercontinental',
+  KDTW:'Detroit',KMSP:'Minneapolis',KFLL:'Fort Lauderdale',KBWI:'Baltimore',
+  KPHL:'Philadelphia',KSLC:'Salt Lake City',KIAD:'Washington Dulles',
+  KDCA:'Washington Reagan',KMDW:'Chicago Midway',KHOU:'Houston Hobby',
+  KPDX:'Portland',KSMF:'Sacramento',KSAN:'San Diego',KTPA:'Tampa',
+  KRDU:'Raleigh-Durham',KCLT:'Charlotte',KMEM:'Memphis',KBNA:'Nashville',
+  KSTL:'St. Louis',KCVG:'Cincinnati',KIND:'Indianapolis',KCMH:'Columbus',
+  KPVD:'Providence',KBUF:'Buffalo',KPIT:'Pittsburgh',KCAK:'Akron',
+  KOKC:'Oklahoma City',KTUL:'Tulsa',KABQ:'Albuquerque',KSAT:'San Antonio',
+  KAUS:'Austin',KELP:'El Paso',KSJC:'San Jose',KSNA:'Orange County',
+  KLGB:'Long Beach',KBUR:'Burbank',KONT:'Ontario CA',KOAK:'Oakland',
+  KHNL:'Honolulu',KPHF:'Newport News',KORF:'Norfolk',KRWI:'Rocky Mount',
+  EGLL:'London Heathrow',EGKK:'London Gatwick',EHAM:'Amsterdam',
+  EDDF:'Frankfurt',LFPG:'Paris CDG',LEMD:'Madrid',LEBL:'Barcelona',
+  LIRF:'Rome Fiumicino',LSZH:'Zurich',LOWW:'Vienna',EPWA:'Warsaw',
+  LTFM:'Istanbul',UUEE:'Moscow Sheremetyevo',EDDM:'Munich',EKCH:'Copenhagen',
+  ESSA:'Stockholm Arlanda',ENGM:'Oslo',EFHK:'Helsinki',EGCC:'Manchester',
+  OMDB:'Dubai',OERK:'Riyadh',OTHH:'Doha',VHHH:'Hong Kong',
+  ZBAA:'Beijing Capital',ZGSZ:'Shenzhen',ZSPD:'Shanghai Pudong',
+  RJTT:'Tokyo Haneda',RJAA:'Tokyo Narita',RKSI:'Seoul Incheon',
+  WSSS:'Singapore Changi',VTBS:'Bangkok Suvarnabhumi',WMKK:'Kuala Lumpur',
+  VIDP:'Delhi',VABB:'Mumbai',YSSY:'Sydney',YMML:'Melbourne',NZAA:'Auckland',
+  CYYZ:'Toronto',CYVR:'Vancouver',CYUL:'Montreal',CYEG:'Edmonton',
+  MMMX:'Mexico City',SBGR:'São Paulo Guarulhos',SAEZ:'Buenos Aires',
+  SKBO:'Bogota',SPIM:'Lima',SCEL:'Santiago',
+};
+
+function airportName(icao) {
+  if (!icao) return '';
+  return AIRPORTS[icao.toUpperCase()] || icao;
+}
+
+// Route cache: callsign -> { origin, dest } | 'loading' | 'none'
+const routeCache = new Map();
+
+async function fetchRoute(callsign) {
+  const cs = (callsign || '').trim().toUpperCase();
+  if (!cs || cs === '???') return;
+  if (routeCache.has(cs)) return;
+  routeCache.set(cs, 'loading');
+
+  try {
+    const url = `https://opensky-network.org/api/routes?callsign=${encodeURIComponent(cs)}`;
+    const res = await fetch(url);
+    if (!res.ok) { routeCache.set(cs, 'none'); return; }
+    const data = await res.json();
+    const route = data.route || [];
+    if (route.length >= 2) {
+      routeCache.set(cs, { origin: route[0], dest: route[route.length - 1] });
+    } else {
+      routeCache.set(cs, 'none');
+    }
+  } catch {
+    routeCache.set(cs, 'none');
+  }
+  // Update just this card's route row without full re-render
+  updateRouteRow(cs);
+}
+
+function updateRouteRow(cs) {
+  const el = document.getElementById('route-' + cs.replace(/[^A-Z0-9]/g, ''));
+  if (!el) return;
+  el.innerHTML = buildRouteHTML(cs);
+}
+
+function buildRouteHTML(cs) {
+  const r = routeCache.get(cs);
+  if (!r || r === 'loading') return '<span class="route-loading">looking up route...</span>';
+  if (r === 'none') return '<span class="route-none">route unavailable</span>';
+  const oName = airportName(r.origin);
+  const dName = airportName(r.dest);
+  return `<span class="route-apt">${r.origin}</span><span class="route-apt-name" style="margin-left:4px">${oName !== r.origin ? oName : ''}</span>
+    <span class="route-arrow">→</span>
+    <span class="route-apt">${r.dest}</span><span class="route-apt-name" style="margin-left:4px">${dName !== r.dest ? dName : ''}</span>`;
+}
+
+async function fetchAllRoutes(list) {
+  // Fetch routes for the 10 closest aircraft with real callsigns, staggered slightly
+  const withCallsign = list.filter(a => (a.flight || '').trim().length > 2).slice(0, 10);
+  for (const a of withCallsign) {
+    const cs = (a.flight || '').trim().toUpperCase();
+    // Check if airplanes.live already gave us route data
+    if ((a.from_iata || a.from_icao) && (a.to_iata || a.to_icao)) {
+      const origin = a.from_icao || ('K' + a.from_iata) || a.from_iata;
+      const dest   = a.to_icao   || ('K' + a.to_iata)   || a.to_iata;
+      routeCache.set(cs, { origin, dest });
+      updateRouteRow(cs);
+    } else if (!routeCache.has(cs)) {
+      fetchRoute(cs);
+      await new Promise(r => setTimeout(r, 120)); // stagger to avoid hammering API
+    } else {
+      updateRouteRow(cs); // cached, just paint it
+    }
+  }
+}
 
 let userLat = null, userLon = null;
 let compassHeading = null;
@@ -497,6 +610,7 @@ function renderAll() {
   renderStats(enriched);
   renderRadar(enriched);
   renderCards(enriched);
+  fetchAllRoutes(enriched);
 }
 
 function renderStats(list) {
@@ -539,6 +653,7 @@ function renderCards(list) {
   }
   el.innerHTML = list.map(a => {
     const cs = (a.flight || '').trim() || '???';
+    const csId = cs.replace(/[^A-Z0-9]/g, '');
     const airline = getAirline(a.flight || '');
     const typeStr = getAircraftName(a.t || '');
     const reg = (a.r || '').trim();
@@ -547,6 +662,8 @@ function renderCards(list) {
     const trk = a.track;
     const dir = a.dir;
     const onGround = a.alt_baro === 'ground' || (alt && alt < 100 && Math.abs(spd || 0) < 30) || a.on_ground === true;
+    // Pre-populate route if already cached
+    const cachedRoute = cs !== '???' ? buildRouteHTML(cs) : '<span class="route-loading">looking up route...</span>';
 
     return `<div class="aircraft-card ${dir}">
       <div class="card-top">
@@ -556,7 +673,8 @@ function renderCards(list) {
         <span class="distance">${a.distNM.toFixed(1)} nm</span>
       </div>
       <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;">${airline !== cs ? airline : ''}</div>
-      <div class="card-divider"></div>
+      <div class="route-row" id="route-${csId}">${cachedRoute}</div>
+      <div class="card-divider" style="margin-top:10px;"></div>
       <div class="card-data">
         <div class="data-cell">
           <div class="data-val">${onGround ? 'GND' : (alt ? (Math.round(alt/100)*100).toLocaleString() : '---')}</div>
