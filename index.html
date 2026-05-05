@@ -244,8 +244,9 @@
       <line x1="110" y1="2"   x2="110" y2="218" stroke="rgba(240,160,32,0.06)" stroke-width="0.5"/>
       <line x1="2"   y1="110" x2="218" y2="110" stroke="rgba(240,160,32,0.06)" stroke-width="0.5"/>
       <!-- Range labels -->
-      <text x="113" y="75"  fill="rgba(240,160,32,0.35)" font-size="7" font-family="Space Mono">2nm</text>
-      <text x="113" y="39"  fill="rgba(240,160,32,0.35)" font-size="7" font-family="Space Mono">4nm</text>
+      <text x="113" y="77"  fill="rgba(240,160,32,0.35)" font-size="7" font-family="Space Mono">3.3nm</text>
+      <text x="113" y="41"  fill="rgba(240,160,32,0.35)" font-size="7" font-family="Space Mono">6.7nm</text>
+      <text x="113" y="6"   fill="rgba(240,160,32,0.45)" font-size="7" font-family="Space Mono">10nm</text>
       <!-- Sweep -->
       <g class="radar-sweep">
         <path d="M110,110 L110,2 A108,108 0 0,1 208,70 Z" fill="rgba(240,160,32,0.04)"/>
@@ -282,7 +283,7 @@
 
 <script>
 const RADIUS_NM = 10;
-const REFRESH_INTERVAL = 5;
+const REFRESH_INTERVAL = 15;
 
 const AIRLINES = {
   AAL:'American Airlines',UAL:'United Airlines',DAL:'Delta Air Lines',
@@ -320,20 +321,11 @@ const AIRCRAFT_TYPES = {
   A359:'Airbus A350-900',A35K:'Airbus A350-1000',
   A388:'Airbus A380-800',
   E170:'Embraer E170',E175:'Embraer E175',E190:'Embraer E190',E195:'Embraer E195',
-  CRJ2:'Bombardier CRJ-200',CRJ7:'Bombardier CRJ-700',CRJ9:'Bombardier CRJ-900',
-  C172:'Cessna 172',C182:'Cessna 182 Skylane', C208:'Cessna Caravan',PC12:'Pilatus PC-12',
+  CRJ2:'Canadair CRJ-200',CRJ7:'Canadair CRJ-700',CRJ9:'Canadair CRJ-900',
+  C172:'Cessna 172',C208:'Cessna Caravan',PC12:'Pilatus PC-12',
   DH8D:'Dash 8-400',AT76:'ATR 72',
   F100:'Fokker 100',MD11:'McDonnell Douglas MD-11',
   B350:'Beechcraft King Air 350',GLF6:'Gulfstream G650',C25B:'Citation CJ3',
-  SR22:'Cirrus SR22', P28A:'Piper Cherokee', 
-
-  // Military
-  H64:'AH-64 Apache', H60:'UH-60 Black Hawk', CH47:'CH-47 Chinook', 
-  V22:'V-22 Osprey', UH72:'UH-72 Lakota',
-  
-  // Helicopters (News & MedEvac)
-  B06:'Bell 206 JetRanger', B407:'Bell 407', H145:'Airbus H145', 
-  EC35:'Eurocopter EC135', AS50:'Eurocopter AS350', MD50:'MD 500'
 };
 
 // ICAO -> airport name (major airports)
