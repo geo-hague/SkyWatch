@@ -94,7 +94,14 @@
   .stat-lbl { font-size: 11px; color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; }
 
   /* Aircraft list */
-  #aircraft-list { flex: 1; overflow-y: auto; min-height: 0; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  #aircraft-list {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    padding: 12px;
+    -webkit-overflow-scrolling: touch;
+  }
+  #aircraft-list > * + * { margin-top: 10px; }
   .aircraft-card {
     background: var(--bg2); border: 1px solid var(--border-dim); border-radius: 10px;
     padding: 12px 14px; position: relative; overflow: hidden;
@@ -131,6 +138,16 @@
   .aircraft-type { font-size: 12px; color: var(--text-dim); }
   .registration { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--text-dim); opacity: 0.7; }
   .on-ground-tag { font-size: 10px; letter-spacing: 0.06em; color: var(--amber); background: var(--amber-glow); padding: 2px 8px; border-radius: 3px; }
+
+  /* Compass pulse — draws attention before it's enabled */
+  @keyframes compass-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(240,160,32,0); background: transparent; }
+    50%       { box-shadow: 0 0 0 6px rgba(240,160,32,0.12); background: rgba(240,160,32,0.06); }
+  }
+  #hdr-compass.pulsing {
+    border-radius: 8px;
+    animation: compass-pulse 2s ease-in-out infinite;
+  }
 
   /* Sweep animation on radar */
   @keyframes sweep {
@@ -176,7 +193,7 @@
 <header>
   <div class="logo">SKY<span>WATCH</span></div>
   <!-- Compact compass (tappable to enable) -->
-  <div id="hdr-compass" onclick="requestCompass()" title="Tap to enable compass">
+  <div id="hdr-compass" class="pulsing" onclick="requestCompass()" title="Tap to enable compass">
     <svg id="compass-svg-mini" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
       <circle cx="15" cy="15" r="13.5" stroke="rgba(240,160,32,0.25)" stroke-width="1"/>
       <circle cx="15" cy="15" r="2" fill="rgba(240,160,32,0.4)"/>
@@ -675,6 +692,8 @@ function onOrientation(e) {
 
 function updateCompassUI() {
   if (compassHeading === null) return;
+  // Stop pulsing once compass is active
+  document.getElementById('hdr-compass').classList.remove('pulsing');
   document.getElementById('hdr-no-compass').style.display = 'none';
   document.getElementById('hdr-yes-compass').style.display = 'block';
   document.getElementById('heading-val').textContent = Math.round(compassHeading);
