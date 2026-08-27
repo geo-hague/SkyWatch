@@ -713,7 +713,8 @@ async function fetchAircraft() {
   if (userLat === null) return;
   setStatus('scanning');
   try {
-    const url = `https://opendata.adsb.fi/api/v3/lat/${userLat.toFixed(4)}/lon/${userLon.toFixed(4)}/dist/${RADIUS_NM}`;
+    const targetUrl = `https://opendata.adsb.fi/api/v3/lat/${userLat.toFixed(4)}/lon/${userLon.toFixed(4)}/dist/${RADIUS_NM}`;
+    const url = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
