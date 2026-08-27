@@ -23,7 +23,7 @@
     --border: rgba(240,160,32,0.18);
     --border-dim: rgba(255,255,255,0.06);
   }
-  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Barlow Condensed', sans-serif; overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Barlow Condensed', sans-serif; overflow: hidden; }
   body { display: flex; flex-direction: column; height: 100vh; }
 
   /* Header */
@@ -50,9 +50,6 @@
     display: flex; align-items: center; gap: 7px; flex: 1;
     justify-content: center;
     cursor: pointer;
-    -webkit-user-select: none; user-select: none;
-    -webkit-touch-callout: none;
-    touch-action: manipulation;
   }
   #compass-svg-mini { width: 30px; height: 30px; flex-shrink: 0; }
   #hdr-no-compass { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--amber-dim); letter-spacing: 0.06em; }
@@ -591,7 +588,6 @@ async function fetchAllRoutes(list) {
 let userLat = null, userLon = null;
 let compassHeading = null;
 let compassGranted = false;
-let compassCheckTimer = null;
 let aircraft = [];
 let countdownVal = REFRESH_INTERVAL;
 let countdownTimer = null;
@@ -668,12 +664,8 @@ function requestCompass() {
       if (state === 'granted') {
         window.addEventListener('deviceorientation', onOrientation, true);
         compassGranted = true;
-      } else {
-        alert('Compass access is blocked for this site. On iPhone: Settings > Safari > scroll to this site (or "Motion & Orientation Access") and allow it, then reload the page.');
       }
-    }).catch(() => {
-      alert('Could not request compass access. On iPhone: Settings > Safari > Motion & Orientation Access must be turned ON, then reload the page.');
-    });
+    }).catch(() => {});
   } else {
     window.addEventListener('deviceorientationabsolute', onAbsOrientation, true);
     window.addEventListener('deviceorientation', onOrientation, true);
@@ -732,7 +724,7 @@ async function fetchAircraft() {
     startCountdown();
   } catch (err) {
     console.error(err);
-    if (aircraft.length === 0) showError('Could not connect to ADS-B feed (' + (err.message || 'unknown error') + '). Check your connection and try again.');
+    if (aircraft.length === 0) showError('Could not connect to ADS-B feed. Check your connection and try again.');
     else setStatus('stale');
     startCountdown();
   }
@@ -886,13 +878,7 @@ function startApp() {
       userLon = p.coords.longitude;
     }, null, { enableHighAccuracy: true });
   }, err => {
-    if (err.code === 1) {
-      showError('Location access is blocked for this site. Tap the lock/info icon next to the address bar > Permissions > Location > Allow. Also check Android Settings > Location is turned on. Then reload and try again.');
-    } else if (err.code === 2) {
-      showError('Could not determine your location. Make sure Location is turned on in Android Settings and try again.');
-    } else {
-      showError('Location request timed out. Check your GPS/location signal and try again.');
-    }
+    showError('Location access denied. SkyWatch needs GPS to find nearby aircraft.');
   }, { enableHighAccuracy: true, timeout: 10000 });
 }
 
