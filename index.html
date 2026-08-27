@@ -591,6 +591,7 @@ async function fetchAllRoutes(list) {
 let userLat = null, userLon = null;
 let compassHeading = null;
 let compassGranted = false;
+let compassCheckTimer = null;
 let aircraft = [];
 let countdownVal = REFRESH_INTERVAL;
 let countdownTimer = null;
@@ -677,6 +678,12 @@ function requestCompass() {
     window.addEventListener('deviceorientationabsolute', onAbsOrientation, true);
     window.addEventListener('deviceorientation', onOrientation, true);
     compassGranted = true;
+    clearTimeout(compassCheckTimer);
+    compassCheckTimer = setTimeout(() => {
+      if (compassHeading === null) {
+        alert('No compass data received. On Android Chrome: tap the lock/info icon next to the address bar > Permissions > make sure "Motion sensors" isn\'t blocked for this site, then reload. Some devices/browsers also don\'t expose a compass at all.');
+      }
+    }, 3000);
   }
 }
 
@@ -886,9 +893,9 @@ function startApp() {
     }, null, { enableHighAccuracy: true });
   }, err => {
     if (err.code === 1) {
-      showError('Location access is blocked for this site. On iPhone: Settings > Privacy & Security > Location Services, make sure it\'s ON, then Settings > Safari > Location and allow it (or tap the "aA" icon in the address bar > Website Settings). Then reload and try again.');
+      showError('Location access is blocked for this site. Tap the lock/info icon next to the address bar > Permissions > Location > Allow. Also check Android Settings > Location is turned on. Then reload and try again.');
     } else if (err.code === 2) {
-      showError('Could not determine your location. Make sure Location Services is turned on for your device (Settings > Privacy & Security > Location Services) and try again.');
+      showError('Could not determine your location. Make sure Location is turned on in Android Settings and try again.');
     } else {
       showError('Location request timed out. Check your GPS/location signal and try again.');
     }
