@@ -713,8 +713,7 @@ async function fetchAircraft() {
   if (userLat === null) return;
   setStatus('scanning');
   try {
-    const targetUrl = `https://api.adsb.lol/v2/point/${userLat.toFixed(4)}/${userLon.toFixed(4)}/${RADIUS_NM}`;
-    const url = `https://skywatch-proxy.m-c-hunt429.workers.dev/?url=${encodeURIComponent(targetUrl)}`;
+    const url = `https://api.adsb.lol/v2/point/${userLat.toFixed(4)}/${userLon.toFixed(4)}/${RADIUS_NM}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
