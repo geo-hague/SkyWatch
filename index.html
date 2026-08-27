@@ -678,12 +678,6 @@ function requestCompass() {
     window.addEventListener('deviceorientationabsolute', onAbsOrientation, true);
     window.addEventListener('deviceorientation', onOrientation, true);
     compassGranted = true;
-    clearTimeout(compassCheckTimer);
-    compassCheckTimer = setTimeout(() => {
-      if (compassHeading === null) {
-        alert('No compass data received. On Android Chrome: tap the lock/info icon next to the address bar > Permissions > make sure "Motion sensors" isn\'t blocked for this site, then reload. Some devices/browsers also don\'t expose a compass at all.');
-      }
-    }, 3000);
   }
 }
 
