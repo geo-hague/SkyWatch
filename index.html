@@ -713,7 +713,7 @@ async function fetchAircraft() {
   if (userLat === null) return;
   setStatus('scanning');
   try {
-    const url = `https://api.airplanes.live/v2/point/${userLat.toFixed(4)}/${userLon.toFixed(4)}/${RADIUS_NM}`;
+    const url = `https://api.adsb.one/v2/point/${userLat.toFixed(4)}/${userLon.toFixed(4)}/${RADIUS_NM}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -723,7 +723,7 @@ async function fetchAircraft() {
     startCountdown();
   } catch (err) {
     console.error(err);
-    if (aircraft.length === 0) showError('Could not connect to ADS-B feed. Check your connection and try again.');
+    if (aircraft.length === 0) showError('Could not connect to ADS-B feed (' + (err.message || 'unknown error') + '). Check your connection and try again.');
     else setStatus('stale');
     startCountdown();
   }
