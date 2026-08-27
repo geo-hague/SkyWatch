@@ -667,8 +667,12 @@ function requestCompass() {
       if (state === 'granted') {
         window.addEventListener('deviceorientation', onOrientation, true);
         compassGranted = true;
+      } else {
+        alert('Compass access is blocked for this site. On iPhone: Settings > Safari > scroll to this site (or "Motion & Orientation Access") and allow it, then reload the page.');
       }
-    }).catch(() => {});
+    }).catch(() => {
+      alert('Could not request compass access. On iPhone: Settings > Safari > Motion & Orientation Access must be turned ON, then reload the page.');
+    });
   } else {
     window.addEventListener('deviceorientationabsolute', onAbsOrientation, true);
     window.addEventListener('deviceorientation', onOrientation, true);
@@ -881,7 +885,13 @@ function startApp() {
       userLon = p.coords.longitude;
     }, null, { enableHighAccuracy: true });
   }, err => {
-    showError('Location access denied. SkyWatch needs GPS to find nearby aircraft.');
+    if (err.code === 1) {
+      showError('Location access is blocked for this site. On iPhone: Settings > Privacy & Security > Location Services, make sure it\'s ON, then Settings > Safari > Location and allow it (or tap the "aA" icon in the address bar > Website Settings). Then reload and try again.');
+    } else if (err.code === 2) {
+      showError('Could not determine your location. Make sure Location Services is turned on for your device (Settings > Privacy & Security > Location Services) and try again.');
+    } else {
+      showError('Location request timed out. Check your GPS/location signal and try again.');
+    }
   }, { enableHighAccuracy: true, timeout: 10000 });
 }
 
