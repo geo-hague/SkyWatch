@@ -709,24 +709,52 @@ function updateCompassUI() {
 
 
 // --- Fetch aircraft ---
+// airplanes.live locked its /v2/point endpoint behind an API key, so we use
+// free, keyless, "drop-in compatible" mirrors of the same ADSBExchange-style
+// API instead. They return identical JSON (same "ac" array, same field
+// names: flight, r, t, alt_baro, gs, track, lat, lon, ...), so nothing else
+// in this file needs to change. Try adsb.lol first, fall back to adsb.fi if
+// it's ever down/rate-limited.
+const ADSB_SOURCES = [
+  (lat, lon, r) => `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}`,
+  (lat, lon, r) => `https://opendata.adsb.fi/api/v2/point/${lat}/${lon}/${r}`,
+];
+
+async function fetchFromSource(buildUrl) {
+  const url = buildUrl(userLat.toFixed(4), userLon.toFixed(4), RADIUS_NM);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.ac || [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function fetchAircraft() {
   if (userLat === null) return;
   setStatus('scanning');
-  try {
-    const url = `https://api.adsb.lol/v2/point/${userLat.toFixed(4)}/${userLon.toFixed(4)}/${RADIUS_NM}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    aircraft = (data.ac || []).filter(a => a.lat && a.lon);
-    renderAll();
-    setStatus('live');
-    startCountdown();
-  } catch (err) {
-    console.error(err);
-    if (aircraft.length === 0) showError('Could not connect to ADS-B feed. Check your connection and try again.');
-    else setStatus('stale');
-    startCountdown();
+  let lastErr = null;
+  for (const buildUrl of ADSB_SOURCES) {
+    try {
+      const ac = await fetchFromSource(buildUrl);
+      aircraft = ac.filter(a => a.lat && a.lon);
+      renderAll();
+      setStatus('live');
+      startCountdown();
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.warn('ADS-B source failed, trying next:', err);
+    }
   }
+  console.error(lastErr);
+  if (aircraft.length === 0) showError('Could not connect to ADS-B feed. Check your connection and try again.');
+  else setStatus('stale');
+  startCountdown();
 }
 
 function startCountdown() {
