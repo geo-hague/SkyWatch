@@ -717,7 +717,7 @@ function updateCompassUI() {
 // it's ever down/rate-limited.
 const ADSB_SOURCES = [
   (lat, lon, r) => `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}`,
-  (lat, lon, r) => `https://opendata.adsb.fi/api/v2/point/${lat}/${lon}/${r}`,
+  (lat, lon, r) => `https://opendata.adsb.fi/api/v2/lat/${lat}/lon/${lon}/dist/${r}`,
 ];
 
 async function fetchFromSource(buildUrl) {
@@ -739,6 +739,7 @@ async function fetchAircraft() {
   setStatus('scanning');
   let lastErr = null;
   for (const buildUrl of ADSB_SOURCES) {
+    const url = buildUrl(userLat.toFixed(4), userLon.toFixed(4), RADIUS_NM);
     try {
       const ac = await fetchFromSource(buildUrl);
       aircraft = ac.filter(a => a.lat && a.lon);
@@ -748,12 +749,18 @@ async function fetchAircraft() {
       return;
     } catch (err) {
       lastErr = err;
-      console.warn('ADS-B source failed, trying next:', err);
+      console.warn(`ADS-B source failed (${url}):`, err);
     }
   }
   console.error(lastErr);
-  if (aircraft.length === 0) showError('Could not connect to ADS-B feed. Check your connection and try again.');
-  else setStatus('stale');
+  if (aircraft.length === 0) {
+    // Surface the real reason instead of a generic message, so it's
+    // possible to tell a CORS block, a timeout, and a bad response apart.
+    const reason = lastErr ? (lastErr.name === 'AbortError' ? 'request timed out' : lastErr.message) : 'unknown error';
+    showError(`Could not connect to ADS-B feed (${reason}). Check your connection and try again.`);
+  } else {
+    setStatus('stale');
+  }
   startCountdown();
 }
 
