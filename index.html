@@ -709,21 +709,31 @@ function updateCompassUI() {
 
 
 // --- Fetch aircraft ---
-// airplanes.live locked its /v2/point endpoint behind an API key, so we use
-// free, keyless, "drop-in compatible" mirrors of the same ADSBExchange-style
-// API instead. They return identical JSON (same "ac" array, same field
-// names: flight, r, t, alt_baro, gs, track, lat, lon, ...), so nothing else
-// in this file needs to change. Try adsb.lol first, fall back to adsb.fi if
-// it's ever down/rate-limited.
-const ADSB_SOURCES = [
+// airplanes.live locked its /v2/point endpoint behind an API key. Its free
+// keyless successors (adsb.lol, adsb.fi) serve the same ADSBExchange-style
+// JSON ("ac" array; flight, r, t, alt_baro, gs, track, lat, lon, ...) but
+// are built for server-side/curl use and don't send the CORS header browsers
+// require to read a cross-origin response, so requests go through the
+// skywatch-proxy Cloudflare Worker, which fetches server-side and adds it.
+//
+// Only the worker is used now (adsb.lol as primary, adsb.fi as backup if
+// adsb.lol errors/rate-limits). Third-party CORS proxies (corsproxy.io,
+// allorigins) and raw direct calls were removed: during testing they proved
+// unreliable (401s, 500s) and, worse, every attempt is a real hit against
+// adsb.lol/adsb.fi's rate limit even when the browser can't read the
+// response — so trying 3-4 paths per refresh was quietly hammering the
+// upstream APIs and is very likely what triggered the 429.
+const RAW_SOURCES = [
   (lat, lon, r) => `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}`,
   (lat, lon, r) => `https://opendata.adsb.fi/api/v2/lat/${lat}/lon/${lon}/dist/${r}`,
 ];
+const WORKER_PROXY = url => `https://skywatch-proxy.m-c-hunt429.workers.dev/?url=${encodeURIComponent(url)}`;
+const ADSB_SOURCES = RAW_SOURCES.map(raw => (lat, lon, r) => WORKER_PROXY(raw(lat, lon, r)));
 
 async function fetchFromSource(buildUrl) {
   const url = buildUrl(userLat.toFixed(4), userLon.toFixed(4), RADIUS_NM);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 6000);
   try {
     const res = await fetch(url, { signal: controller.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -901,6 +911,21 @@ function showError(msg) {
 function startApp() {
   document.getElementById('screen-perm').style.display = 'none';
   document.getElementById('screen-loading').style.display = 'flex';
+
+  // Debug override: open as ...index.html?lat=35.7796&lon=-78.6382 to skip
+  // GPS entirely. Handy for testing the ADS-B fetch in a desktop browser's
+  // DevTools, where there's no GPS but Console/Network tabs are easy to use.
+  const params = new URLSearchParams(window.location.search);
+  const debugLat = parseFloat(params.get('lat'));
+  const debugLon = parseFloat(params.get('lon'));
+  if (!isNaN(debugLat) && !isNaN(debugLon)) {
+    userLat = debugLat;
+    userLon = debugLon;
+    showMain();
+    fetchAircraft();
+    return;
+  }
+
   navigator.geolocation.getCurrentPosition(pos => {
     userLat = pos.coords.latitude;
     userLon = pos.coords.longitude;
