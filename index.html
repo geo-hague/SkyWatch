@@ -711,14 +711,20 @@ function updateCompassUI() {
 // --- Fetch aircraft ---
 // adsb.lol/adsb.fi (the free, keyless successors to airplanes.live's old
 // API) don't send the Access-Control-Allow-Origin header a browser requires
-// to read a cross-origin response — that's enforced by the browser itself,
-// not something fixable from this page's JS. So this page asks a small
-// Cloudflare Worker (skywatch-proxy-worker.js) for the data instead; the
-// worker fetches server-side (where CORS doesn't apply), tries adsb.lol then
-// falls back to adsb.fi, and returns the result with that header added.
+// to read a cross-origin response — enforced by the browser, not fixable
+// from this page's JS. A server-side proxy is required to add it.
 //
-// IMPORTANT: replace WORKER_URL below with your deployed worker's URL.
-const WORKER_URL = 'https://skywatch-proxy.m-c-hunt429.workers.dev/aircraft';
+// That proxy runs on Vercel (api/aircraft.js), NOT Cloudflare Workers:
+// adsb.lol, adsb.fi and airplanes.live all specifically block requests
+// coming from Cloudflare's shared Worker IP ranges (confirmed — the exact
+// same request gets a 403/429 from a Cloudflare Worker and a normal 200
+// moments later from elsewhere), so a Worker can never reliably work here
+// no matter how the request is built. Vercel's serverless functions use
+// different egress IPs and aren't blocked.
+//
+// IMPORTANT: replace WORKER_URL below with your deployed Vercel endpoint,
+// e.g. https://your-project.vercel.app/api/aircraft
+const WORKER_URL = 'https://skywatch-lovat.vercel.app/api/aircraft';
 
 async function fetchAircraft() {
   if (userLat === null) return;
