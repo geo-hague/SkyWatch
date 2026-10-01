@@ -665,23 +665,23 @@ function setCompassStatus(text) {
 }
 
 function requestCompass() {
+  // Attach the sensor listeners immediately and unconditionally — Android
+  // doesn't require any permission prompt for these at all. Gating this
+  // behind the iOS-only permission promise (below) is what caused the
+  // "stuck on requesting permission" bug: on a browser where that promise
+  // never resolves, nothing could ever start.
+  compassGranted = true;
+  setCompassStatus('WAITING FOR<br>SENSOR…');
+  window.addEventListener('deviceorientationabsolute', onAbsOrientation, true);
+  window.addEventListener('deviceorientation', onOrientation, true);
+
+  // iOS Safari additionally requires an explicit permission grant before it
+  // will dispatch any orientation events. Request it if the API exists, but
+  // it no longer blocks anything above: the listeners are already live, so
+  // if this hangs or fails, every other browser (Android included) keeps
+  // working exactly the same.
   if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // iOS Safari path: explicit permission prompt required.
-    setCompassStatus('REQUESTING<br>PERMISSION…');
-    DeviceOrientationEvent.requestPermission().then(state => {
-      if (state === 'granted') {
-        compassGranted = true;
-        window.addEventListener('deviceorientation', onOrientation, true);
-      } else {
-        setCompassStatus('PERMISSION<br>DENIED');
-      }
-    }).catch(() => {
-      setCompassStatus('PERMISSION<br>ERROR');
-    });
-  } else {
-    compassGranted = true;
-    window.addEventListener('deviceorientationabsolute', onAbsOrientation, true);
-    window.addEventListener('deviceorientation', onOrientation, true);
+    DeviceOrientationEvent.requestPermission().catch(() => {});
   }
 }
 
