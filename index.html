@@ -658,23 +658,65 @@ function getAircraftName(t) {
 }
 
 // --- Compass ---
+function setCompassStatus(text) {
+  const el = document.getElementById('hdr-no-compass');
+  if (el) el.innerHTML = text;
+}
+
 function requestCompass() {
-  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+  // iOS 13+ requires both a secure (https) context and the permission
+  // request to happen synchronously inside a user-gesture handler — both
+  // conditions are already met here since this runs from onclick.
+  if (!window.isSecureContext) {
+    setCompassStatus('NEEDS HTTPS');
+    console.warn('Compass: device orientation requires a secure (https) context.');
+    return;
+  }
+  if (typeof DeviceOrientationEvent === 'undefined') {
+    setCompassStatus('NOT SUPPORTED<br>ON THIS BROWSER');
+    return;
+  }
+
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS Safari path: explicit permission prompt required.
+    setCompassStatus('REQUESTING<br>PERMISSION…');
     DeviceOrientationEvent.requestPermission().then(state => {
       if (state === 'granted') {
-        window.addEventListener('deviceorientation', onOrientation, true);
         compassGranted = true;
+        window.addEventListener('deviceorientation', onOrientation, true);
+        armCompassTimeout();
+      } else {
+        setCompassStatus('PERMISSION<br>DENIED');
       }
-    }).catch(() => {});
+    }).catch(err => {
+      console.error('Compass permission request failed:', err);
+      setCompassStatus('PERMISSION<br>ERROR');
+    });
   } else {
+    // Android / other browsers: no permission prompt, sensors (if present)
+    // start reporting as soon as a listener is attached.
+    compassGranted = true;
+    setCompassStatus('WAITING FOR<br>SENSOR…');
     window.addEventListener('deviceorientationabsolute', onAbsOrientation, true);
     window.addEventListener('deviceorientation', onOrientation, true);
-    compassGranted = true;
+    armCompassTimeout();
   }
 }
 
+// If no usable orientation event arrives within a few seconds, say so
+// instead of leaving the button looking unresponsive. Common causes: the
+// device has no magnetometer, the browser blocks motion sensors for this
+// site (check site settings), or it's a desktop browser.
+function armCompassTimeout() {
+  setTimeout(() => {
+    if (compassHeading === null) {
+      setCompassStatus('NO SENSOR DATA<br>FROM DEVICE');
+    }
+  }, 3000);
+}
+
 function onAbsOrientation(e) {
-  if (e.absolute && e.alpha !== null) {
+  if (e.alpha !== null) {
     compassHeading = (360 - e.alpha) % 360;
     updateCompassUI();
   }
@@ -682,13 +724,18 @@ function onAbsOrientation(e) {
 
 function onOrientation(e) {
   if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+    // iOS Safari: a true, already-calibrated magnetic heading.
     compassHeading = e.webkitCompassHeading;
     updateCompassUI();
-  } else if (e.absolute && e.alpha !== null) {
+  } else if (e.alpha !== null) {
+    // Some Android/desktop browsers never fire deviceorientationabsolute,
+    // or fire deviceorientation with absolute:false even when the value is
+    // effectively heading-like. An approximate heading beats none.
     compassHeading = (360 - e.alpha) % 360;
     updateCompassUI();
   }
 }
+
 
 function updateCompassUI() {
   if (compassHeading === null) return;
