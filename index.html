@@ -588,6 +588,7 @@ async function fetchAllRoutes(list) {
 let userLat = null, userLon = null;
 let compassHeading = null;
 let compassGranted = false;
+let gotOnlyRelativeData = false;
 let aircraft = [];
 let countdownVal = REFRESH_INTERVAL;
 let countdownTimer = null;
@@ -680,6 +681,7 @@ function requestCompass() {
   if (typeof DeviceOrientationEvent.requestPermission === 'function') {
     // iOS Safari path: explicit permission prompt required.
     setCompassStatus('REQUESTING<br>PERMISSION…');
+    gotOnlyRelativeData = false;
     DeviceOrientationEvent.requestPermission().then(state => {
       if (state === 'granted') {
         compassGranted = true;
@@ -696,6 +698,7 @@ function requestCompass() {
     // Android / other browsers: no permission prompt, sensors (if present)
     // start reporting as soon as a listener is attached.
     compassGranted = true;
+    gotOnlyRelativeData = false;
     setCompassStatus('WAITING FOR<br>SENSOR…');
     window.addEventListener('deviceorientationabsolute', onAbsOrientation, true);
     window.addEventListener('deviceorientation', onOrientation, true);
@@ -710,7 +713,9 @@ function requestCompass() {
 function armCompassTimeout() {
   setTimeout(() => {
     if (compassHeading === null) {
-      setCompassStatus('NO SENSOR DATA<br>FROM DEVICE');
+      setCompassStatus(gotOnlyRelativeData
+        ? 'NO TRUE COMPASS<br>ON THIS DEVICE'
+        : 'NO SENSOR DATA<br>FROM DEVICE');
     }
   }, 3000);
 }
@@ -740,6 +745,8 @@ function computeTiltCompensatedHeading(alpha, beta, gamma) {
 }
 
 function onAbsOrientation(e) {
+  // This dedicated event only exists for genuinely absolute (magnetometer-
+  // referenced) data, so no extra check is needed here.
   if (e.alpha !== null && e.beta !== null && e.gamma !== null) {
     compassHeading = computeTiltCompensatedHeading(e.alpha, e.beta, e.gamma);
     updateCompassUI();
@@ -748,15 +755,24 @@ function onAbsOrientation(e) {
 
 function onOrientation(e) {
   if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-    // iOS Safari: a true, already-calibrated magnetic heading. No further
-    // correction needed or wanted here.
+    // iOS Safari: a true, already-calibrated magnetic heading.
     compassHeading = e.webkitCompassHeading;
     updateCompassUI();
-  } else if (e.alpha !== null && e.beta !== null && e.gamma !== null) {
+  } else if (e.absolute === true && e.alpha !== null && e.beta !== null && e.gamma !== null) {
+    // IMPORTANT: only accept this when the browser itself marks the data as
+    // absolute (magnetometer-referenced). Without that check, "alpha" is
+    // just rotation relative to wherever the device happened to be pointed
+    // when the sensor started — not a real compass heading. Accepting it
+    // anyway is what caused the ~90°, direction-dependent error: the error
+    // amount was literally however far off you were facing from the
+    // listener's arbitrary starting reference, not a fixed bug to tune out.
     compassHeading = computeTiltCompensatedHeading(e.alpha, e.beta, e.gamma);
     updateCompassUI();
+  } else {
+    gotOnlyRelativeData = true;
   }
 }
+
 
 
 
