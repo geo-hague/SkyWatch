@@ -665,14 +665,85 @@ function setCompassStatus(text) {
 }
 
 function requestCompass() {
-  // iOS 13+ requires both a secure (https) context and the permission
-  // request to happen synchronously inside a user-gesture handler — both
-  // conditions are already met here since this runs from onclick.
   if (!window.isSecureContext) {
     setCompassStatus('NEEDS HTTPS');
     console.warn('Compass: device orientation requires a secure (https) context.');
     return;
   }
+
+  // Prefer the modern Generic Sensor API when available. The older
+  // deviceorientationabsolute event (used in the fallback path below) has
+  // long been unreliable on Android — many phones/Chrome versions only ever
+  // deliver *relative* rotation through it despite having a working
+  // magnetometer (this is what caused the direction-dependent wrong
+  // readings earlier: relative data was mistaken for absolute). This API
+  // talks to the magnetometer directly via explicit permissions, so it
+  // doesn't have that failure mode.
+  if ('AbsoluteOrientationSensor' in window) {
+    startAbsoluteOrientationSensor();
+  } else {
+    startLegacyOrientation();
+  }
+}
+
+function startAbsoluteOrientationSensor() {
+  setCompassStatus('REQUESTING<br>PERMISSION…');
+  Promise.all([
+    navigator.permissions.query({ name: 'accelerometer' }),
+    navigator.permissions.query({ name: 'gyroscope' }),
+    navigator.permissions.query({ name: 'magnetometer' }),
+  ]).then(results => {
+    if (results.some(r => r.state === 'denied')) {
+      setCompassStatus('PERMISSION<br>DENIED');
+      return;
+    }
+    try {
+      const sensor = new AbsoluteOrientationSensor({ frequency: 10, referenceFrame: 'device' });
+      sensor.addEventListener('reading', () => {
+        compassHeading = quaternionToHeading(sensor.quaternion);
+        updateCompassUI();
+      });
+      sensor.addEventListener('error', event => {
+        console.error('AbsoluteOrientationSensor error:', event.error);
+        if (event.error.name === 'NotReadableError') {
+          setCompassStatus('SENSOR NOT<br>AVAILABLE');
+        } else {
+          // Device/browser claims support but something's off — try the
+          // older event-based path instead of giving up entirely.
+          startLegacyOrientation();
+        }
+      });
+      sensor.start();
+      compassGranted = true;
+      setCompassStatus('WAITING FOR<br>SENSOR…');
+      armCompassTimeout();
+    } catch (err) {
+      console.error('Failed to start AbsoluteOrientationSensor:', err);
+      startLegacyOrientation();
+    }
+  }).catch(err => {
+    console.error('Sensor permission query failed:', err);
+    startLegacyOrientation();
+  });
+}
+
+// Converts the sensor's quaternion directly into a compass heading using
+// the Earth reference frame the W3C spec defines for this API: X = East,
+// Y = magnetic North, Z = up. This rotates the device's own "top of screen"
+// direction (local vector 0,1,0) into that frame and reads off the
+// resulting East/North components — no Euler-angle-order guessing involved.
+function quaternionToHeading(q) {
+  const [x, y, z, w] = q;
+  const east = 2 * (x * y + z * w);
+  const north = 1 - 2 * (x * x + z * z);
+  const heading = Math.atan2(east, north) * (180 / Math.PI);
+  return (heading + 360) % 360;
+}
+
+// --- Fallback: older event-based orientation API ---
+// Used when AbsoluteOrientationSensor isn't available (notably iOS Safari,
+// which doesn't support it but has its own reliable webkitCompassHeading).
+function startLegacyOrientation() {
   if (typeof DeviceOrientationEvent === 'undefined') {
     setCompassStatus('NOT SUPPORTED<br>ON THIS BROWSER');
     return;
@@ -695,8 +766,6 @@ function requestCompass() {
       setCompassStatus('PERMISSION<br>ERROR');
     });
   } else {
-    // Android / other browsers: no permission prompt, sensors (if present)
-    // start reporting as soon as a listener is attached.
     compassGranted = true;
     gotOnlyRelativeData = false;
     setCompassStatus('WAITING FOR<br>SENSOR…');
@@ -706,10 +775,10 @@ function requestCompass() {
   }
 }
 
-// If no usable orientation event arrives within a few seconds, say so
+// If no usable orientation data arrives within a few seconds, say so
 // instead of leaving the button looking unresponsive. Common causes: the
-// device has no magnetometer, the browser blocks motion sensors for this
-// site (check site settings), or it's a desktop browser.
+// device has no magnetometer, the browser/OS blocks motion sensors for this
+// site, or it's a desktop browser.
 function armCompassTimeout() {
   setTimeout(() => {
     if (compassHeading === null) {
@@ -720,13 +789,9 @@ function armCompassTimeout() {
   }, 3000);
 }
 
-// Tilt-compensated compass heading. Using alpha alone ("360 - alpha") only
-// gives a correct heading when the phone is held perfectly flat — any real
-// tilt skews it, which is almost certainly why facing north was reading as
-// west. This combines alpha/beta/gamma via the device's full rotation to
-// project onto the horizontal plane properly. It also corrects for the
-// current screen rotation angle, since on many browsers alpha is reported
-// relative to the screen's current orientation, not a fixed one.
+// Tilt-compensated heading for the legacy event path only (not used by
+// AbsoluteOrientationSensor, which gets its heading straight from the
+// quaternion above).
 function computeTiltCompensatedHeading(alpha, beta, gamma) {
   const screenAngle = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
   const a = (alpha + screenAngle) * (Math.PI / 180);
@@ -745,8 +810,6 @@ function computeTiltCompensatedHeading(alpha, beta, gamma) {
 }
 
 function onAbsOrientation(e) {
-  // This dedicated event only exists for genuinely absolute (magnetometer-
-  // referenced) data, so no extra check is needed here.
   if (e.alpha !== null && e.beta !== null && e.gamma !== null) {
     compassHeading = computeTiltCompensatedHeading(e.alpha, e.beta, e.gamma);
     updateCompassUI();
@@ -759,19 +822,13 @@ function onOrientation(e) {
     compassHeading = e.webkitCompassHeading;
     updateCompassUI();
   } else if (e.absolute === true && e.alpha !== null && e.beta !== null && e.gamma !== null) {
-    // IMPORTANT: only accept this when the browser itself marks the data as
-    // absolute (magnetometer-referenced). Without that check, "alpha" is
-    // just rotation relative to wherever the device happened to be pointed
-    // when the sensor started — not a real compass heading. Accepting it
-    // anyway is what caused the ~90°, direction-dependent error: the error
-    // amount was literally however far off you were facing from the
-    // listener's arbitrary starting reference, not a fixed bug to tune out.
     compassHeading = computeTiltCompensatedHeading(e.alpha, e.beta, e.gamma);
     updateCompassUI();
   } else {
     gotOnlyRelativeData = true;
   }
 }
+
 
 
 
