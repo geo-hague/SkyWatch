@@ -729,6 +729,7 @@ function updateCompassUI() {
   if (bg) bg.style.transform = `rotate(${-compassHeading}deg)`;
   const blips = document.getElementById('radar-blips');
   if (blips) blips.style.transform = `rotate(${-compassHeading}deg)`;
+  applyLabelCounterRotation();
   // The aircraft card list's ahead/left/right/behind labels do depend on
   // heading, but only need to update a few times a second, not every tick —
   // category changes aren't something that benefits from being per-frame.
@@ -833,12 +834,14 @@ function renderStats(list) {
 
 const DIR_COLORS = { ahead:'#22dd88', right:'#f0a020', left:'#44aaff', behind:'rgba(255,255,255,0.3)', bearing:'#f0a020' };
 
+let radarLabels = []; // {el, x, y} for text labels that must stay upright
+
 function renderRadar(list) {
   const blipsEl = document.getElementById('radar-blips');
   const maxR = RADIUS_NM;
   const cx = 110, cy = 110, pxR = 108;
   let html = '';
-  list.slice(0, 20).forEach(a => {
+  list.slice(0, 20).forEach((a, i) => {
     // Plot in true (north-up) coordinates — the whole group is rotated via
     // CSS transform to achieve the heading-up view, so this only needs to
     // be recomputed when the aircraft data itself changes, not every time
@@ -847,12 +850,37 @@ function renderRadar(list) {
     const r = Math.min(a.distNM / maxR, 1) * pxR;
     const x = (cx + Math.sin(angle) * r).toFixed(1);
     const y = (cy - Math.cos(angle) * r).toFixed(1);
+    const ly = (parseFloat(y) - 7).toFixed(1);
     const col = DIR_COLORS[a.dir] || '#f0a020';
     const cs = (a.flight || '').trim() || (a.r || '').trim() || '???';
+    // The label gets a per-element counter-rotation (set below, and kept in
+    // sync on every compass tick) so it stays upright even though its
+    // parent group rotates with the radar.
     html += `<circle cx="${x}" cy="${y}" r="4" fill="${col}" opacity="0.9"/>
-      <text x="${x}" y="${(parseFloat(y)-7).toFixed(1)}" text-anchor="middle" fill="${col}" font-size="7" font-family="Space Mono" opacity="0.85">${cs}</text>`;
+      <text id="radar-label-${i}" x="${x}" y="${ly}" text-anchor="middle" fill="${col}" font-size="7" font-family="Space Mono" opacity="0.85">${cs}</text>`;
   });
   blipsEl.innerHTML = html;
+
+  // Re-collect label elements and apply the current counter-rotation
+  // immediately, so they're upright from the moment they're drawn rather
+  // than waiting for the next compass tick.
+  radarLabels = list.slice(0, 20).map((a, i) => {
+    const angle = toRad(a.bearing);
+    const r = Math.min(a.distNM / maxR, 1) * pxR;
+    const x = cx + Math.sin(angle) * r;
+    const y = cy - Math.cos(angle) * r;
+    return { el: document.getElementById(`radar-label-${i}`), x, y };
+  });
+  applyLabelCounterRotation();
+}
+
+function applyLabelCounterRotation() {
+  const heading = compassHeading || 0;
+  // The blips group is rotated by -heading, so rotating each label by
+  // +heading around its own point cancels that out, leaving it upright.
+  radarLabels.forEach(({ el, x, y }) => {
+    if (el) el.setAttribute('transform', `rotate(${heading} ${x} ${y})`);
+  });
 }
 
 function renderCards(list) {
