@@ -588,7 +588,7 @@ async function fetchAllRoutes(list) {
 let userLat = null, userLon = null;
 let compassHeading = null;
 let compassGranted = false;
-let gotOnlyRelativeData = false;
+let lastCompassRenderAll = 0;
 let aircraft = [];
 let countdownVal = REFRESH_INTERVAL;
 let countdownTimer = null;
@@ -665,169 +665,43 @@ function setCompassStatus(text) {
 }
 
 function requestCompass() {
-  if (!window.isSecureContext) {
-    setCompassStatus('NEEDS HTTPS');
-    console.warn('Compass: device orientation requires a secure (https) context.');
-    return;
-  }
-
-  // Prefer the modern Generic Sensor API when available. The older
-  // deviceorientationabsolute event (used in the fallback path below) has
-  // long been unreliable on Android — many phones/Chrome versions only ever
-  // deliver *relative* rotation through it despite having a working
-  // magnetometer (this is what caused the direction-dependent wrong
-  // readings earlier: relative data was mistaken for absolute). This API
-  // talks to the magnetometer directly via explicit permissions, so it
-  // doesn't have that failure mode.
-  if ('AbsoluteOrientationSensor' in window) {
-    startAbsoluteOrientationSensor();
-  } else {
-    startLegacyOrientation();
-  }
-}
-
-function startAbsoluteOrientationSensor() {
-  setCompassStatus('REQUESTING<br>PERMISSION…');
-  Promise.all([
-    navigator.permissions.query({ name: 'accelerometer' }),
-    navigator.permissions.query({ name: 'gyroscope' }),
-    navigator.permissions.query({ name: 'magnetometer' }),
-  ]).then(results => {
-    if (results.some(r => r.state === 'denied')) {
-      setCompassStatus('PERMISSION<br>DENIED');
-      return;
-    }
-    try {
-      const sensor = new AbsoluteOrientationSensor({ frequency: 10, referenceFrame: 'device' });
-      sensor.addEventListener('reading', () => {
-        compassHeading = quaternionToHeading(sensor.quaternion);
-        updateCompassUI();
-      });
-      sensor.addEventListener('error', event => {
-        console.error('AbsoluteOrientationSensor error:', event.error);
-        if (event.error.name === 'NotReadableError') {
-          setCompassStatus('SENSOR NOT<br>AVAILABLE');
-        } else {
-          // Device/browser claims support but something's off — try the
-          // older event-based path instead of giving up entirely.
-          startLegacyOrientation();
-        }
-      });
-      sensor.start();
-      compassGranted = true;
-      setCompassStatus('WAITING FOR<br>SENSOR…');
-      armCompassTimeout();
-    } catch (err) {
-      console.error('Failed to start AbsoluteOrientationSensor:', err);
-      startLegacyOrientation();
-    }
-  }).catch(err => {
-    console.error('Sensor permission query failed:', err);
-    startLegacyOrientation();
-  });
-}
-
-// Converts the sensor's quaternion directly into a compass heading using
-// the Earth reference frame the W3C spec defines for this API: X = East,
-// Y = magnetic North, Z = up. This rotates the device's own "top of screen"
-// direction (local vector 0,1,0) into that frame and reads off the
-// resulting East/North components — no Euler-angle-order guessing involved.
-function quaternionToHeading(q) {
-  const [x, y, z, w] = q;
-  const east = 2 * (x * y + z * w);
-  const north = 1 - 2 * (x * x + z * z);
-  const heading = Math.atan2(east, north) * (180 / Math.PI);
-  return (heading + 360) % 360;
-}
-
-// --- Fallback: older event-based orientation API ---
-// Used when AbsoluteOrientationSensor isn't available (notably iOS Safari,
-// which doesn't support it but has its own reliable webkitCompassHeading).
-function startLegacyOrientation() {
-  if (typeof DeviceOrientationEvent === 'undefined') {
-    setCompassStatus('NOT SUPPORTED<br>ON THIS BROWSER');
-    return;
-  }
-
-  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
     // iOS Safari path: explicit permission prompt required.
     setCompassStatus('REQUESTING<br>PERMISSION…');
-    gotOnlyRelativeData = false;
     DeviceOrientationEvent.requestPermission().then(state => {
       if (state === 'granted') {
         compassGranted = true;
         window.addEventListener('deviceorientation', onOrientation, true);
-        armCompassTimeout();
       } else {
         setCompassStatus('PERMISSION<br>DENIED');
       }
-    }).catch(err => {
-      console.error('Compass permission request failed:', err);
+    }).catch(() => {
       setCompassStatus('PERMISSION<br>ERROR');
     });
   } else {
     compassGranted = true;
-    gotOnlyRelativeData = false;
-    setCompassStatus('WAITING FOR<br>SENSOR…');
     window.addEventListener('deviceorientationabsolute', onAbsOrientation, true);
     window.addEventListener('deviceorientation', onOrientation, true);
-    armCompassTimeout();
   }
 }
 
-// If no usable orientation data arrives within a few seconds, say so
-// instead of leaving the button looking unresponsive. Common causes: the
-// device has no magnetometer, the browser/OS blocks motion sensors for this
-// site, or it's a desktop browser.
-function armCompassTimeout() {
-  setTimeout(() => {
-    if (compassHeading === null) {
-      setCompassStatus(gotOnlyRelativeData
-        ? 'NO TRUE COMPASS<br>ON THIS DEVICE'
-        : 'NO SENSOR DATA<br>FROM DEVICE');
-    }
-  }, 3000);
-}
-
-// Tilt-compensated heading for the legacy event path only (not used by
-// AbsoluteOrientationSensor, which gets its heading straight from the
-// quaternion above).
-function computeTiltCompensatedHeading(alpha, beta, gamma) {
-  const screenAngle = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
-  const a = (alpha + screenAngle) * (Math.PI / 180);
-  const b = beta * (Math.PI / 180);
-  const g = gamma * (Math.PI / 180);
-
-  const cA = Math.cos(a), sA = Math.sin(a);
-  const cB = Math.cos(b), sB = Math.sin(b);
-  const cG = Math.cos(g), sG = Math.sin(g);
-
-  const rA = -cA * sG - sA * sB * cG;
-  const rB = -sA * sG + cA * sB * cG;
-
-  let heading = Math.atan2(rA, rB) * (180 / Math.PI);
-  return (heading + 360) % 360;
-}
-
 function onAbsOrientation(e) {
-  if (e.alpha !== null && e.beta !== null && e.gamma !== null) {
-    compassHeading = computeTiltCompensatedHeading(e.alpha, e.beta, e.gamma);
+  if (e.absolute && e.alpha !== null) {
+    compassHeading = (360 - e.alpha) % 360;
     updateCompassUI();
   }
 }
 
 function onOrientation(e) {
   if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-    // iOS Safari: a true, already-calibrated magnetic heading.
     compassHeading = e.webkitCompassHeading;
     updateCompassUI();
-  } else if (e.absolute === true && e.alpha !== null && e.beta !== null && e.gamma !== null) {
-    compassHeading = computeTiltCompensatedHeading(e.alpha, e.beta, e.gamma);
+  } else if (e.absolute && e.alpha !== null) {
+    compassHeading = (360 - e.alpha) % 360;
     updateCompassUI();
-  } else {
-    gotOnlyRelativeData = true;
   }
 }
+
 
 
 
@@ -846,8 +720,16 @@ function updateCompassUI() {
   // Rotate radar background so your heading is always at top
   const bg = document.getElementById('radar-bg');
   if (bg) bg.style.transform = `rotate(${-compassHeading}deg)`;
-  // Re-render blips with updated relative angles (if aircraft loaded)
-  if (aircraft.length > 0) renderAll();
+  // Re-render blips with updated relative angles (if aircraft loaded).
+  // Orientation events can fire many times per second — re-rendering the
+  // full aircraft list on every single one is what caused the lag. Throttle
+  // it to a few times a second; the numeric readout and needle above still
+  // update instantly on every event, only the heavier card re-render waits.
+  const now = Date.now();
+  if (aircraft.length > 0 && now - lastCompassRenderAll > 200) {
+    lastCompassRenderAll = now;
+    renderAll();
+  }
 }
 
 
