@@ -264,8 +264,10 @@
       <circle cx="110" cy="110" r="10" fill="none" stroke="#f0a020" stroke-width="1" opacity="0.4"/>
       <!-- AHEAD always at top -->
       <text x="110" y="21" text-anchor="middle" fill="rgba(34,221,136,0.75)" font-size="8" font-family="Space Mono" font-weight="700">▲ AHEAD</text>
-      <!-- Blips placed in heading-relative coords by JS -->
-      <g id="radar-blips"></g>
+      <!-- Blips: plotted in true (north-up) coordinates, then rotated as a
+           whole group exactly like radar-bg above — smooth and cheap,
+           instead of recalculating every dot's x/y on every compass tick. -->
+      <g id="radar-blips" style="transform-origin:110px 110px"></g>
     </svg>
   </div>
 
@@ -717,14 +719,19 @@ function updateCompassUI() {
   document.getElementById('heading-card').textContent = toCardinal(compassHeading);
   // Rotate mini compass needle so N stays correct
   document.getElementById('compass-needle').style.transform = `rotate(${-compassHeading}deg)`;
-  // Rotate radar background so your heading is always at top
+  // Rotate radar background AND blips as whole groups — this is the actual
+  // smooth motion (cheap CSS transform, runs every single tick, no DOM
+  // rebuild). This is what was missing: blips used to have their x/y
+  // recalculated and redrawn from scratch on every tick instead of just
+  // being rotated like the background already was, which is what made them
+  // choppy once that redraw got throttled to fix the lag.
   const bg = document.getElementById('radar-bg');
   if (bg) bg.style.transform = `rotate(${-compassHeading}deg)`;
-  // Re-render blips with updated relative angles (if aircraft loaded).
-  // Orientation events can fire many times per second — re-rendering the
-  // full aircraft list on every single one is what caused the lag. Throttle
-  // it to a few times a second; the numeric readout and needle above still
-  // update instantly on every event, only the heavier card re-render waits.
+  const blips = document.getElementById('radar-blips');
+  if (blips) blips.style.transform = `rotate(${-compassHeading}deg)`;
+  // The aircraft card list's ahead/left/right/behind labels do depend on
+  // heading, but only need to update a few times a second, not every tick —
+  // category changes aren't something that benefits from being per-frame.
   const now = Date.now();
   if (aircraft.length > 0 && now - lastCompassRenderAll > 200) {
     lastCompassRenderAll = now;
@@ -832,13 +839,14 @@ function renderRadar(list) {
   const cx = 110, cy = 110, pxR = 108;
   let html = '';
   list.slice(0, 20).forEach(a => {
-    // Heading-up: subtract compass heading so "ahead" is always at top
-    const relAngle = compassHeading !== null
-      ? toRad(a.bearing - compassHeading)
-      : toRad(a.bearing);
+    // Plot in true (north-up) coordinates — the whole group is rotated via
+    // CSS transform to achieve the heading-up view, so this only needs to
+    // be recomputed when the aircraft data itself changes, not every time
+    // the compass heading changes.
+    const angle = toRad(a.bearing);
     const r = Math.min(a.distNM / maxR, 1) * pxR;
-    const x = (cx + Math.sin(relAngle) * r).toFixed(1);
-    const y = (cy - Math.cos(relAngle) * r).toFixed(1);
+    const x = (cx + Math.sin(angle) * r).toFixed(1);
+    const y = (cy - Math.cos(angle) * r).toFixed(1);
     const col = DIR_COLORS[a.dir] || '#f0a020';
     const cs = (a.flight || '').trim() || (a.r || '').trim() || '???';
     html += `<circle cx="${x}" cy="${y}" r="4" fill="${col}" opacity="0.9"/>
